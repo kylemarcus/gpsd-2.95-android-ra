@@ -1,0 +1,9 @@
+prefix=/home/kmarcus2/Downloads/bin/gpsd-2.95
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: libgpsd
+Description: Lowlevel GPSD control library
+Version: 2.95
+Libs: -L${libdir} -lgpsd

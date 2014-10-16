@@ -1,0 +1,1923 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+This file is Copyright (c) 2010 by the GPSD project
+BSD terms apply: see the file COPYING in the distribution root for details.
+-->
+<!DOCTYPE refentry PUBLIC
+   "-//OASIS//DTD DocBook XML V4.1.2//EN"
+   "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+<!ENTITY gpsdsock	 "/var/run/gpsd.sock">
+]>
+<refentry id='gpsd.8'>
+<refentryinfo><date>9 Aug 2004</date></refentryinfo>
+<refmeta>
+<refentrytitle>gpsd</refentrytitle>
+<manvolnum>8</manvolnum>
+<refmiscinfo class="source">The GPSD Project</refmiscinfo>
+<refmiscinfo class="manual">GPSD Documentation</refmiscinfo>
+</refmeta>
+<refnamediv id='name'>
+<refname>gpsd</refname>
+<refpurpose>interface daemon for GPS receivers</refpurpose>
+</refnamediv>
+
+<refsynopsisdiv id='synopsis'>
+
+<cmdsynopsis>
+  <command>gpsd</command>
+      <arg choice='opt'>-F <replaceable>control-socket</replaceable></arg>
+      <!-- arg choice='opt'>-R
+      <replaceable>rtcm-listener-port</replaceable></arg -->
+      <arg choice='opt'>-S <replaceable>listener-port</replaceable></arg>
+      <arg choice='opt'>-b </arg>
+      <arg choice='opt'>-l </arg>
+      <arg choice='opt'>-G </arg>
+      <arg choice='opt'>-n </arg>
+      <arg choice='opt'>-N </arg>
+      <arg choice='opt'>-h </arg>
+      <arg choice='opt'>-P <replaceable>pidfile</replaceable></arg>
+      <arg choice='opt'>-D <replaceable>debuglevel</replaceable></arg>
+      <arg choice='opt'>-V </arg>
+      <arg rep='repeat'>
+	   <group><replaceable>source-name</replaceable></group>
+      </arg>
+</cmdsynopsis>
+</refsynopsisdiv>
+
+<refsect1 id='quickstart'><title>QUICK START</title>
+
+<para>If you have a GPS attached on the lowest-numbered USB port of a
+Linux system, and want to read reports from it on TCP/IP port 2947, it
+will normally suffice to do this:</para>
+
+<programlisting>
+gpsd /dev/ttyUSB0
+</programlisting>
+
+<para>For the lowest-numbered serial port:</para>
+
+<programlisting>
+gpsd /dev/ttyS0
+</programlisting>
+
+<para>Change the device number as appropriate if you need to use a
+different port. Command-line flags enable verbose logging, a control
+port, and other optional extras but should not be needed for basic
+operation; the one exception, on very badly designed hardware, might
+be <option>-b</option> (which see).</para>
+
+<para>On Linux systems supporting udev, <application>gpsd</application>
+is normally started automatically when a USB plugin event fires (if it
+is not already running) and is handed the name of the newly active 
+device. In that case no invocation is required at all.</para>
+
+<para>For your initial tests set your GPS hardware to speak NMEA, as
+<application>gpsd</application> is guaranteed to be able to process
+that. If your GPS has a native or binary mode with better perfornance
+that <application>gpsd</application> knows how to speak,
+<application>gpsd</application> will autoconfigure that mode.</para>
+
+<para>You can verify correct operation by first starting
+<application>gpsd</application> and then
+<application>xgps</application>, the X windows test client.</para>
+
+<para>If you have problems, the GPSD project maintains a <ulink
+url="http://gpsd.berlios.de/faq.html">FAQ</ulink> to assist
+troubleshooting.</para>
+
+</refsect1>
+<refsect1 id='description'><title>DESCRIPTION</title>
+
+<para><application>gpsd</application> is a monitor daemon that collects
+information from GPSes, differential-GPS radios, or AIS receivers
+attached to the host machine.  Each GPS, DGPS radio, or AIS receiver
+is expected to be direct-connected to the host via a USB or RS232C
+serial device.  The serial device may be specified to
+<application>gpsd</application> at startup, or it may be set via a
+command shipped down a local control socket (e.g. by a USB hotplug
+script). Given a GPS device by either means,
+<application>gpsd</application> discovers the correct port speed and
+protocol for it.</para>
+
+<para><application>gpsd</application> should be able to query any GPS
+that speaks either the standard textual NMEA 0183 protocol, or the
+(differing) extended NMEA dialects used by MKT-3301, iTrax, Motorola
+OnCore, Sony CXD2951, and Ashtech/Thales devices.  It can also
+interpret the binary protocols used by EverMore, Garmin, Navcom,
+Rockwell/Zodiac, SiRF, Trimble, and uBlox ANTARIS devices. It can read
+heading and attitude information from the Oceanserver 5000 orv TNT
+Revolution digital compasses.</para>
+
+<para>The GPS reporting formats supported by your instance of
+<application>gpsd</application> may differ depending on how it was
+compiled; general-purpose versions support many, but it can be built
+with protocol subsets down to a singleton for use in constrained
+environments. For a list of the GPS protocols supported by your
+instance, see the output of <command>gpsd -l</command></para>
+
+<para><application>gpsd</application> effectively hides the
+differences among the GPS types it supports. It also knows about and
+uses commands that tune these GPSes for lower latency. By using
+<application>gpsd</application> as an intermediary applications 
+avoid contention for serial devices.</para>
+
+<para><application>gpsd</application> can use differential-GPS
+corrections from a DGPS radio or over the net, from a ground station
+running a DGPSIP server or a Ntrip broadcaster that reports RTCM-104
+data; this will shrink position errors by roughly a factor of four.
+When <application>gpsd</application> opens a serial device emitting
+RTCM-104, it automatically recognizes this and uses the device as a
+correction source for all connected GPSes that accept RTCM corrections
+(this is dependent on the type of the GPS; not all GPSes have the
+firmware capability to accept RTCM correction packets). See 
+<xref linkend='accuracy'/> and <xref linkend='files'/> for discussion.</para>
+
+<para>Client applications will communicate with <application>gpsd</application>
+via a TCP/IP port, 2947 by default).  Both IPv4 and IPv6 connections
+are supported and a client may connect via either.</para>
+
+<para>The program accepts the following options:</para>
+<variablelist remap='TP'>
+<varlistentry>
+<term>-F</term>
+<listitem>
+<para>Create a control socket for device addition and removal
+commands.  You must specify a valid pathname on your local filesystem;
+this will be created as a Unix-domain socket to which you can write
+commands that edit the daemon's internal device list.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>-S</term>
+<listitem><para>Set TCP/IP port on which to listen for GPSD clients
+(default is 2947).</para></listitem>
+</varlistentry>
+<varlistentry>
+<term>-b</term>
+<listitem><para>Broken-device-safety mode, otherwise known as read-only
+mode. Some popular bluetooth and USB receivers lock up or become
+totally inaccessible when probed or reconfigured. This switch prevents
+gpsd from writing to a receiver.  This means that
+<application>gpsd</application> cannot configure the receiver for
+optimal performance, but it also means that
+<application>gpsd</application> cannot break the receiver. A better
+solution would be for Bluetooth to not be so fragile. A platform
+independent method to identify serial-over-Bluetooth devices would
+also be nice.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term>-G</term>
+<listitem><para>This flag causes <application>gpsd</application> to
+listen on all addresses (INADDR_ANY) rather than just the loopback
+(INADDR_LOOPBACK) address. For the sake of privacy and security, TPV
+information is now private to the local machine until the user makes
+an effort to expose this to the world.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term>-l</term>
+<listitem><para>List all drivers compiled into this
+<application>gpsd</application> instance. The letters to the left of
+each driver name are the <application>gpsd</application> 
+control commands supported by that driver.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>-n</term>
+<listitem>
+<para>Don't wait for a client to connect before polling
+whatever GPS is associated with it. Many GPSes go to a standby mode
+(drawing less power) before the host machine asserts DTR, so waiting
+for the first actual request saves battery power.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>-N</term>
+<listitem><para>Don't daemonize; run in foreground.  Also suppresses
+privilege-dropping.  This switch is mainly useful for debugging.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>-h</term>
+<listitem><para>Display help message and terminate.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term>-P</term>
+<listitem>
+<para>Specify the name and path to record the daemon's process ID.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>-D</term>
+<listitem>
+<para>Set debug level. At debug levels 2 and above,
+<application>gpsd</application> reports incoming sentence and actions
+to standard error if <application>gpsd</application> is in the foreground
+(-N) or to syslog if in the background.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>-V</term>
+<listitem>
+<para>Dump version and exit.</para>
+</listitem>
+</varlistentry>
+</variablelist>
+
+<para>Arguments are interpreted as the names of data sources.
+Normally, a data source is the device pathname of a local device from
+which the daemon may expect GPS data. But there are three other
+special source types recognized, for a total of four:</para>
+
+<variablelist>
+<varlistentry>
+<term>Local serial or USB device</term>
+<listitem>
+<para>A normal Unix device name of a serial or USB device to which a
+sensor is attached. Example:
+<filename>/dev/ttyUSB0</filename>.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>TCP feed</term>
+<listitem>
+<para>A URI with the prefix "tcp://", followed by a hostname, a
+colon, and a port number. The daemon will open a socket to the
+indicated address and port and read data packets from it, which will 
+be interpreted as though they had been issued by a serial device. Example:
+<filename>tcp://data.aishub.net:4006</filename>.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>UDP feed</term>
+<listitem>
+<para>A URI with the prefix "udp://", followed by a hostname, a
+colon, and a port number. The daemon will open a socket listening for
+UDP datagrams arriving on the indicated address and port, which will 
+be interpreted as though they had been issued by a serial device. Example:
+<filename>udp://127.0.0.1:5000</filename>.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Ntrip caster</term>
+<listitem>
+<para>A URI with the prefix "ntrip://" followed by the name of an
+Ntrip caster (Ntrip is a protocol for broadcasting differential-GPS
+fixes over the net). For Ntrip services that require authentication, a
+prefix of the form "username:password@" can be added before the name
+of the Ntrip broadcaster.  For Ntrip service, you must specify which
+stream to use; the stream is given in the form "/streamname". An
+example DGPSIP URI could be "dgpsip://dgpsip.example.com" and a Ntrip
+URI could be
+"ntrip://foo:bar@ntrip.example.com:80/example-stream". Corrections
+from the caster will be send to each attached GPS with the capability
+to accept them.</para>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>DGPSIP server</term>
+<listitem>
+<para>A URI with the prefix "dgpsip://" followed by a hostname, a
+colon, and an optional colon-separated port number (defaulting to
+2101). The daemon will handshake with the DGPSIP server and 
+read RTCM2 correction data from it. Corrections
+from the server will be set to each attached GPS with the capability
+to accept them.Example:
+<filename>dgpsip://dgps.wsrcc.com:2101</filename>.</para>
+</listitem>
+</varlistentry>
+</variablelist>
+
+<para>(The "ais:://" source type supported in some older versions of
+the daemon has been retired in favor of the more general
+"tcp://".)</para>
+
+<para>Internally, the daemon maintains a device pool holding the
+pathnames of devices and remote servers known to the
+daemon. Initially, this list is the list of device-name arguments
+specified on the command line.  That list may be empty, in which case
+the daemon will have no devices on its search list until they are
+added by a control-socket command (see <xref linkend='devices'/> for
+details on this).  Daemon startup will abort with an error if neither
+any devices nor a control socket are specified.</para>
+
+<para>Clients communicate with the daemon via textual request and
+responses. It is a bad idea for applications to speak the protocol
+directly: rather, they should use the
+<application>libgps</application> client library and take appropriate
+care to conditionalize their code on the major and minor protocol
+version symbols.</para>
+
+</refsect1>
+<refsect1 id='protocol'><title>REQUEST/RESPONSE PROTOCOL</title>
+
+<para>The GPSD protocol is built on top of JSON, JaveScript
+Object Notation. Use of this metaprotocol to pass structured
+data between daemon and client avoids the non-extensibility
+problems of the old protocol, and permits a richer set of record types
+to be passed up to clients.</para>
+
+<para>A request line is introduced by "?" and may include multiple
+commands.  Commands begin with a command identifier, followed either
+by a terminating ';' or by an equal sign "=" and a JSON object treated
+as an argument.  Any ';' or newline indication (either LF or CR-LF)
+after the end of a command is ignored. All request lines must be
+composed of US-ASCII characters and may be no more than 80 characters
+in length, exclusive of the trailing newline.</para>
+
+<para>Responses are JSON objects all of which have a "class" attribute
+the value of which is either the name of the invoking command 
+or one of the strings "DEVICE" or "ERROR". Their length
+limit is 1024 characters, including trailing newline.</para>
+
+<para>The remainder of this section documents the core GPSD protocol.
+Extensions are docomented in the following sections. The extensions 
+may not be supported in your <application>gpsd</application> instance 
+if it has been compiled with a restricted feature set.</para>
+
+<para>Here are the core-protocol responses:</para>
+
+<variablelist>
+<varlistentry>
+<term>TPV</term> 
+<listitem>
+<para>A TPV object is a time-position-velocity report. The "class" and "mode"
+fields will reliably be present.  Others may be reported or not
+depending on the fix quality.</para>
+
+<table frame="all" pgwide="0"><title>TPV object</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "TPV"</entry>
+</row>
+<row>
+	<entry>tag</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Type tag associated with this GPS sentence; from an NMEA
+	device this is just the NMEA sentence type..</entry>
+</row>
+<row>
+	<entry>device</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Name of originating device</entry>
+</row>
+<row>
+	<entry>time</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Seconds since the Unix epoch, UTC. May have a
+	fractional part of up to .01sec precision.</entry>
+</row>
+<row>
+	<entry>ept</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Estimated timestamp error (%f, seconds, 95% confidence).</entry>
+</row>
+<row>
+	<entry>lat</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Latitude in degrees: +/- signifies West/East</entry>
+</row>
+<row>
+	<entry>lon</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Longitude in degrees: +/- signifies North/South.</entry>
+</row>
+<row>
+	<entry>alt</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Altitude in meters.</entry>
+</row>
+<row>
+	<entry>epx</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Longitude error estimate in meters, 95% confidence.</entry>
+</row>
+<row>
+	<entry>epy</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Latitude error estimate in meters, 95% confidence.</entry>
+</row>
+<row>
+	<entry>epv</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Estimated vertical error in meters, 95% confidence.</entry>
+</row>
+<row>
+	<entry>track</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Course over ground, degrees from true north.</entry>
+</row>
+<row>
+	<entry>speed</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Speed over ground, meters per second.</entry>
+</row>
+<row>
+	<entry>climb</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Climb (positive) or sink (negative) rate, meters per 
+	second.</entry>
+</row>
+<row>
+	<entry>epd</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Direction error estimate in degrees, 95% confifdence.</entry>
+</row>
+<row>
+	<entry>eps</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Speed error estinmate in meters/sec, 95% confifdence.</entry>
+</row>
+<row>
+	<entry>epc</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Climb/sink error estinmate in meters/sec, 95% confifdence.</entry>
+</row>
+<row>
+	<entry>mode</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>NMEA mode: %d, 0=no mode value yet seen, 1=no fix, 2=2D, 3=3D.</entry>
+</row>
+
+</tbody>
+</tgroup>
+</table>
+
+<para>When the C client library parses a response of this kind, it
+will assert validity bits in the top-level set member for each
+field actually received; see gps.h for bitmask names and values.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"TPV","tag":"MID2","device":"/dev/pts/1",
+    "time":1118327688.280,"ept":0.005,
+    "lat":46.498293369,"lon":7.567411672,"alt":1343.127, 
+    "eph":36.000,"epv":32.321,
+    "track":10.3788,"speed":0.091,"climb":-0.085,"mode":3}
+</programlisting>
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>SKY</term> 
+<listitem>
+<para>A SKY object reports a sky view of the GPS satellite positions.
+If there is no GPS device available, or no skyview has been reported
+yet, only the "class" field will reliably be present.</para>
+
+<table frame="all" pgwide="0"><title>SKY object</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "SKY"</entry>
+</row>
+<row>
+	<entry>tag</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Type tag associated with this GPS sentence; from an NMEA
+	device this is just the NMEA sentence type..</entry>
+</row>
+<row>
+	<entry>device</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Name of originating device</entry>
+</row>
+<row>
+	<entry>time</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Seconds since the Unix epoch, UTC. May have a
+	fractional part of up to .01sec precision.</entry>
+</row>
+<row>
+	<entry>xdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Longitudinal dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>ydop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Latitudinal dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>vdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Altitude dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>tdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Time dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>hdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Horizontal dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get a
+	circular error estimate.</entry>
+</row>
+<row>
+	<entry>pdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Spherical dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>gdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Hyperspherical dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>xdop</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Longitudinal dilution of precision, a dimensionsless
+	factor which should be multiplied by a base UERE to get an
+	error estimate.</entry>
+</row>
+<row>
+	<entry>satellites</entry>
+	<entry>Yes</entry>
+	<entry>list</entry>
+        <entry>List of satellite objects in skyview</entry>
+</row>
+
+</tbody>
+</tgroup>
+</table>
+
+<para>Many devices compute dilution of precision factors but do nit
+include them in their reports.  Many that do report DOPs report only
+HDOP, two-dimensial circular error. <application>gpsd</application>
+always passes through whatever the device actually reports, then
+attempts to fill in other DOPs by calculating the appropriate
+determinants in a covariance matrix based on the satellite view. DOPs
+may be missing if some of these determinants are singular. It can even
+happen that the device reports an error estimate in meters when the
+correspoding DOP is unavailable; some devices use more sophisticated
+error modeling than the covariance calculation.</para>
+
+<para>The satellite list objects have the following elements:</para>
+
+<table frame="all" pgwide="0"><title>Satellite object</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>PRN</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>PRN ID of the satellite</entry>
+</row>
+<row>
+	<entry>az</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>Azimuth, degrees from true north.</entry>
+</row>
+<row>
+	<entry>el</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>Elevation in degrees.</entry>
+</row>
+<row>
+	<entry>ss</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>Signal strength in dB.</entry>
+</row>
+<row>
+	<entry>used</entry>
+	<entry>Yes</entry>
+	<entry>boolean</entry>
+        <entry>Used in current solution?</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>Note that satellite objects do not have a "class" field.., as
+they are never shipped outside of a SKY object.</para>
+
+<para>When the C client library parses a SKY response, it
+will assert the SATELLITE_SET bit in the top-level set member.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"SKY","tag":"MID2","device":"/dev/pts/1","time":1118327688.280
+    "xdop":1.55,"hdop":1.24,"pdop":1.99,
+    "satellites":[
+        {"PRN":23,"el":6,"az":84,"ss":0,"used":false},
+        {"PRN":28,"el":7,"az":160,"ss":0,"used":false},
+        {"PRN":8,"el":66,"az":189,"ss":44,"used":true},
+        {"PRN":29,"el":13,"az":273,"ss":0,"used":false},
+        {"PRN":10,"el":51,"az":304,"ss":29,"used":true},
+        {"PRN":4,"el":15,"az":199,"ss":36,"used":true},
+        {"PRN":2,"el":34,"az":241,"ss":43,"used":true},
+        {"PRN":27,"el":71,"az":76,"ss":43,"used":true}]}
+</programlisting>
+
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>ATT</term> 
+<listitem>
+<para>An ATT object is a vehicle-attitude report. It is returned by
+digital-compass and gyroscope sensors; depending on device, it may 
+include: heading, pitch, roll, yaw, gyroscope, and magnetic-field
+readings. Because such sensors are often bundled as part of 
+marine-navigation systems, the ATT response may also include
+water depth.</para>
+
+<para>The "class", "mode", and "tag" fields will reliably be present.  Others
+may be reported or not depending on the specific device type.</para>
+
+<table frame="all" pgwide="0"><title>ATT object</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "ATT"</entry>
+</row>
+<row>
+	<entry>tag</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Type tag associated with this GPS sentence; from an NMEA
+	device this is just the NMEA sentence type..</entry>
+</row>
+<row>
+	<entry>device</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Name of originating device</entry>
+</row>
+<row>
+	<entry>time</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>Seconds since the Unix epoch, UTC. May have a
+	fractional part of up to .01sec precision.</entry>
+</row>
+<row>
+	<entry>heading</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Heading, degrees from true north.</entry>
+</row>
+<row>
+	<entry>mag_st</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Magnetometer status.</entry>
+</row>
+<row>
+	<entry>pitch</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Pitch in degrees.</entry>
+</row>
+<row>
+	<entry>pitch_st</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Pitch sensor status.</entry>
+</row>
+<row>
+	<entry>yaw</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Yaw in degrees</entry>
+</row>
+<row>
+	<entry>yaw_st</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Yaw sensor status.</entry>
+</row>
+<row>
+	<entry>roll</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Roll in degrees.</entry>
+</row>
+<row>
+	<entry>roll_st</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Roll sensor status.</entry>
+</row>
+<row>
+	<entry>dip</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Roll in degrees.</entry>
+</row>
+<row>
+	<entry>mag_len</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Scalar magnetic field strength.</entry>
+</row>
+<row>
+	<entry>mag_x</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>X component of magnetic field strength.</entry>
+</row>
+<row>
+	<entry>mag_y</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Y component of magnetic field strength..</entry>
+</row>
+<row>
+	<entry>mag_z</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Z component of magnetic field strength..</entry>
+</row>
+<row>
+	<entry>mag_len</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Scalar acceleration.</entry>
+</row>
+<row>
+	<entry>acc_x</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>X component of acceleration.</entry>
+</row>
+<row>
+	<entry>acc_y</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Y component of acceleration.</entry>
+</row>
+<row>
+	<entry>acc_z</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Z component of acceleration..</entry>
+</row>
+<row>
+	<entry>gyro_x</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>X component of acceleration.</entry>
+</row>
+<row>
+	<entry>gyro_y</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Y component of acceleration.</entry>
+</row>
+<row>
+	<entry>depth</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Water depth in meters.</entry>
+</row>
+<row>
+	<entry>temperature</entry>
+	<entry>No</entry>
+	<entry>numeric</entry>
+        <entry>Temperature at sensir, degrees centigrade.</entry>
+</row>
+
+
+</tbody>
+</tgroup>
+</table>
+
+<para>The heading, pitch, and roll status codes (if present) vary by device.
+For the TNT Revolution digital compasses, they are coded as follows: </para>
+
+<table frame="all" pgwide="0"><title>Device flags</title>
+<tgroup cols="2" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Code</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>C</entry>
+	<entry>magnetometer calibration alarm</entry>
+</row>
+<row>
+	<entry>L</entry>
+	<entry>low alarm</entry>
+</row>
+<row>
+	<entry>M</entry>
+	<entry>low warning</entry>
+</row>
+<row>
+	<entry>N</entry>
+	<entry>normal</entry>
+</row>
+<row>
+	<entry>O</entry>
+	<entry>high warning</entry>
+</row>
+<row>
+	<entry>P</entry>
+	<entry>high alarm</entry>
+</row>
+<row>
+	<entry>V</entry>
+	<entry>magnetometer voltage level alarm</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+
+<para>When the C client library parses a response of this kind, it
+will assert ATT_IS.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"ATT","tag":"PTNTHTM","time":1270938096.843,
+    "heading":14223.00,"mag_st":"N",
+    "pitch":169.00,"pitch_st":"N", "roll":-43.00,"roll_st":"N",
+    "dip":13641.000,"mag_x":2454.000,"temperature":0.000,"depth":0.000}
+</programlisting>
+</listitem>
+</varlistentry>
+
+</variablelist>
+
+<para>And here are the commands:</para>
+
+<variablelist>
+
+<varlistentry>
+<term>?VERSION;</term> 
+<listitem><para>Returns an object with the following attributes:</para>
+
+<table frame="all" pgwide="0"><title>VERSION object</title>
+<tgroup cols="4" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "VERSION"</entry>
+</row>
+<row>
+	<entry>release</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Public release level</entry>
+</row>
+<row>
+	<entry>rev</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Internal revision-control level.</entry>
+</row>
+<row>
+	<entry>proto_major</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>API major revision level..</entry>
+</row>
+<row>
+	<entry>proto_minor</entry>
+	<entry>Yes</entry>
+	<entry>numeric</entry>
+        <entry>API minor revision level..</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>The daemon ships a VERSION response to each client when the
+client first connects to it.</para>
+
+<para>When the C client library parses a response of this kind, it
+will assert the VERSION_SET bit in the top-level set member.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"VERSION","version":"2.40dev","rev":"06f62e14eae9886cde907dae61c124c53eb1101f","proto_major":3,"proto_minor":1}
+</programlisting>
+
+
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>?DEVICES;</term> 
+<listitem><para>Returns a device list object with the
+following elements:</para>
+
+<table frame="all" pgwide="0"><title>DEVICES object</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "DEVICES"</entry>
+</row>
+<row>
+	<entry>devices</entry>
+	<entry>Yes</entry>
+	<entry>list</entry>
+        <entry>List of device descriptions</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>When the C client library parses a response of this kind, it
+will assert the DEVICELIST_SET bit in the top-level set member.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class"="DEVICES","devices":[
+    {"class":"DEVICE","path":"/dev/pts/1","flags":1,"driver":"SiRF binary"},
+    {"class":"DEVICE","path":"/dev/pts/3","flags":4,"driver":"AIVDM"}]}
+</programlisting>
+
+<para>The daemon occasionally ships a bare DEVICE object to the client
+(that is, one not inside a DEVICES wrapper). The data content of these
+objects will be described later in the section covering
+notifications.</para>
+
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>?WATCH;</term> 
+<listitem>
+
+<para>This command sets watcher mode. It also sets or elicits a report
+of per-subscriber policy and the raw bit.  An argument WATCH object
+changes the subscriber's policy. The responce describes the
+subscriber's policy. The response will also include a DEVICES
+object.</para>
+
+<para>A WATCH object has the following elements:</para>
+
+<table frame="all" pgwide="0"><title>WATCH object</title>
+<tgroup cols="4" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "WATCH"</entry>
+</row>
+<row>
+	<entry>enable</entry>
+	<entry>No</entry>
+	<entry>boolean</entry>
+        <entry>Enable (true) or disable (false) watcher mode. Default
+	is true.</entry>
+</row>
+<row>
+	<entry>json</entry>
+	<entry>No</entry>
+	<entry>boolean</entry>
+        <entry>Enable (true) or disable (false) dumping of JSON reports.
+	Default is false.</entry>
+</row>
+<row>
+	<entry>nmea</entry>
+	<entry>No</entry>
+	<entry>boolean</entry>
+        <entry>Enable (true) or disable (false) dumping of binary
+	packets as pseudo-NMEA. Default
+	is false.</entry>
+</row>
+<row>
+	<entry>raw</entry> 
+        <entry>No</entry> 
+        <entry>integer</entry>
+
+	<entry>Controls 'raw' mode. When this attribute is set to 1
+	for a channel, <application>gpsd</application> reports the
+	unprocessed NMEA or AIVDM data stream from whatever device is attached.
+	Binary GPS packets are hex-dumped.  RTCM2 and RTCM3
+        packets are not dumped in raw mode.</entry>
+</row>
+<row>
+	<entry>scaled</entry>
+	<entry>No</entry>
+	<entry>boolean</entry>
+        <entry>If true, apply scaling divisors to output before
+	dumping; default is false. Applies only to AIS reports.</entry>
+</row>
+<row>
+	<entry>device</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>If present, enable watching only of the specified device
+	rather than all devices.  Useful with raw and NMEA modes
+	in which device responses aren't tagged. Has no effect when
+	used with enable:false.</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>There is an additional boolean "timing" attribute which is 
+undocumented because that portion of the interface is considered
+unstable and for developer use only.</para>
+
+<para>In watcher mode, GPS reports are dumped as TPV and SKY
+responses. AIS and RTCM reporting is described in the next section.</para>
+
+<para>When the C client library parses a response of this kind, it
+will assert the POLICY_SET bit in the top-level set member.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"WATCH", "raw":1,"scaled":true}
+</programlisting>
+
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>?POLL;</term> 
+<listitem>
+
+<para>The POLL command requests data from the last-seen fixes on all
+active GPS devices.  Devices must previously have been activated by
+?WATCH to be pollable, or have been specified on the GPSD command line
+together with an <option>-n</option> option.</para>
+
+<para>Polling can lead to possibly surprising results when it is used
+on a device such as an NMEA GPS for which a complete fix has to be
+accumulated from several sentences. If you poll while those sentences
+are being emitted, the response will contain the last complete fix
+data and may be as much as one cycle time (typically 1 second)
+stale.</para>
+
+<para>The POLL response will contain a timestamped list of TPV objects
+describing cached data, and a timestamped list of SKY objects
+describing satellite configuration. If a device has not seen fixes, it
+will be reported with a mode field of zero.</para>
+
+<table frame="all" pgwide="0"><title>POLL object</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "POLL"</entry>
+</row>
+<row>
+	<entry>time</entry>
+	<entry>Yes</entry>
+	<entry>Numeric</entry>
+        <entry>Seconds since the Unix epoch, UTC. May have a
+	fractional part of up to .001sec precision.</entry>
+</row>
+<row>
+	<entry>active</entry>
+	<entry>Yes</entry>
+	<entry>Numeric</entry>
+        <entry>Count of active devices.</entry>
+</row>
+<row>
+	<entry>fixes</entry>
+	<entry>Yes</entry>
+	<entry>JSON array</entry>
+        <entry>Comma-separated list of TPV objects.</entry>
+</row>
+<row>
+	<entry>skyviews</entry>
+	<entry>Yes</entry>
+	<entry>JSON array</entry>
+        <entry>Comma-separated list of SKY objects.</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>Here's an example of a POLL response:</para>
+
+<programlisting>
+{"class":"POLL","timestamp":1270517274.846,"active":1,
+    "fixes":[{"class":"TPV","tag":"MID41","device":"/dev/ttyUSB0",
+              "time":1270517264.240,"ept":0.005,"lat":40.035093060,
+              "lon":-75.519748733,"track":99.4319,"speed":0.123,"mode":2}],
+    "skyviews":[{"class":"SKY","tag":"MID41","device":"/dev/ttyUSB0",
+                 "time":1270517264.240,"hdop":9.20,
+                 "satellites":[{"PRN":16,"el":55,"az":42,"ss":36,"used":true},
+                               {"PRN":19,"el":25,"az":177,"ss":0,"used":false},
+                               {"PRN":7,"el":13,"az":295,"ss":0,"used":false},
+                               {"PRN":6,"el":56,"az":135,"ss":32,"used":true},
+                               {"PRN":13,"el":47,"az":304,"ss":0,"used":false},
+                               {"PRN":23,"el":66,"az":259,"ss":0,"used":false},
+                               {"PRN":20,"el":7,"az":226,"ss":0,"used":false},
+                               {"PRN":3,"el":52,"az":163,"ss":32,"used":true},
+                               {"PRN":31,"el":16,"az":102,"ss":0,"used":false}
+]}]}
+</programlisting>
+
+<note>
+<para>Client software should not assime the field inventory of the
+POLL response is fixed for all time.  As
+<application>gpsd</application> collects and caches more data from
+more sensor types, those data are likely to find their way 
+into this response.</para>
+</note>
+
+</listitem>
+</varlistentry>
+
+<varlistentry>
+<term>?DEVICE</term> 
+<listitem>
+
+<para>This command reports (when followed by ';') the state of a
+device, or sets (when followed by '=' and a DEVICE object)
+device-specific control bits, notably the device's speed and serial
+mode and the native-mode bit.  The parameter-setting form will be rejected if
+more than one client is attached to the channel.</para>
+
+<para>Pay attention to the response, because it is
+possible for this command to fail if the GPS does not support a
+speed-switching command or only supports some combinations of
+serial modes.  In case of failure, the daemon and GPS will
+continue to communicate at the old speed.</para>
+
+<para>Use the parameter-setting form with caution.  On USB and
+Bluetooth GPSes it is also possible for serial mode setting to fail
+either because the serial adaptor chip does not support non-8N1 modes
+or because the device firmware does not properly synchronize the
+serial adaptor chip with the UART on the GPS chipset whjen the speed
+changes. These failures can hang your device, possibly requiring a GPS
+power cycle or (in extreme cases) physically disconnecting the NVRAM
+backup battery.</para>
+
+<para>A DEVICE object has the following elements:</para>
+
+<table frame="all" pgwide="0"><title>CONFIGCHAN object</title>
+<tgroup cols="4" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "DEVICE"</entry>
+</row>
+<row>
+	<entry>path</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>Name the device for which the control bits are
+	being reported, or for which they are to be applied. This 
+        attribute may be omitted only when there is exactly one 
+        subscribed channel.</entry>
+</row>
+<row>
+	<entry>activated</entry>
+	<entry>At device activation and device close time.</entry>
+	<entry>numeric</entry>
+        <entry>Time the device was activated, 
+	or 0 if it is being closed.</entry>
+</row>
+<row>
+	<entry>flags</entry>
+	<entry>No</entry>
+	<entry>integer</entry>
+        <entry>Bit vector of property flags.  Currently defined flags are:
+        describe packet types seen so far (GPS, RTCM2, RTCM3,
+	AIS). Won't be reported if empty, e.g. before
+	<application>gpsd</application> has seen identifiable packets
+	from the device.</entry>
+</row>
+<row>
+	<entry>driver</entry>
+	<entry>No</entry>
+	<entry>string</entry>
+        <entry>GPSD's name for the device driver type. Won't be reported before
+	<application>gpsd</application> has seen identifiable packets
+	from the device.</entry>
+</row>
+<row>
+	<entry>subtype</entry>
+	<entry>When the daemon sees a delayed response to a probe for
+	subtype or firmware-version information.</entry>
+	<entry>string</entry>
+	<entry>Whatever version information the device returned.</entry>
+</row>
+<row>
+	<entry>bps</entry>
+	<entry>No</entry>
+	<entry>integer</entry>
+        <entry>Device speed in bits per second.</entry>
+</row>
+<row>
+	<entry>parity</entry> 
+        <entry>Yes</entry> 
+        <entry>string</entry>
+	<entry><para>N, O or E for no parity, odd, or even.</para></entry>
+</row>
+<row>
+	<entry>stopbits</entry> 
+        <entry>Yes</entry> 
+        <entry>string</entry>
+	<entry><para>Stop bits (1 or 2).</para></entry>
+</row>
+<row>
+	<entry>native</entry>
+	<entry>No</entry>
+	<entry>integer</entry>
+        <entry>0 means NMEA mode and 1 means
+	alternate mode (binary if it has one, for SiRF and Evermore chipsets
+	in particular). Attempting to set this mode on a non-GPS
+	device will yield an error.</entry>
+</row>
+<row>
+	<entry>cycle</entry>
+	<entry>No</entry>
+	<entry>real</entry>
+        <entry>Device cycle time in seconds.</entry>
+</row>
+<row>
+	<entry>mincycle</entry>
+	<entry>No</entry>
+	<entry>real</entry>
+        <entry>Device minimum cycle time in seconds. Reported from 
+	?CONFIGDEV when (and only when) the rate is switchable. It is 
+	read-only and not settable.</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>The serial parameters will be omitted in a response describing a 
+TCP/IP source such as an Ntrip, DGPSIP, or AIS feed.</para>
+
+<para>The contents of the flags field should be interpreted as follows:</para>
+
+<table frame="all" pgwide="0"><title>Device flags</title>
+<tgroup cols="3" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>C #define</entry>
+	<entry>Value</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>SEEN_GPS</entry>
+	<entry>0x01</entry>
+	<entry>GPS data has been seen on this device</entry>
+</row>
+<row>
+	<entry>SEEN_RTCM2</entry>
+	<entry>0x02</entry>
+	<entry>RTCM2 data has been seen on this device</entry>
+</row>
+<row>
+	<entry>SEEN_RTCM3</entry>
+	<entry>0x04</entry>
+	<entry>RTCM3 data has been seen on this device</entry>
+</row>
+<row>
+	<entry>SEEN_AIS</entry>
+	<entry>0x08</entry>
+	<entry>AIS data has been seen on this device</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<!--
+<para>The mincycle member may be 0, indicating no hard lower limit on the
+cycle time. On an NMEA device of this kind it is possible to try to
+push more characters through per cycle than the time to transmit will
+allow. You must set the time high enough to let all sentences come
+through.  Here are the maxima to use for computation:</para>
+
+<table frame='all'>
+<tgroup cols='2'>
+<tbody>
+<row><entry>ZDA       </entry><entry>36</entry></row>
+<row><entry>GLL       </entry><entry>47</entry></row>
+<row><entry>GGA       </entry><entry>82</entry></row>
+<row><entry>VTG       </entry><entry>46</entry></row>
+<row><entry>RMC       </entry><entry>77</entry></row>
+<row><entry>GSA       </entry><entry>67</entry></row>
+<row><entry>GSV       </entry><entry>60 (per line, thus 180 for a set of 3)</entry> </row>
+</tbody>
+</tgroup>
+</table>
+
+<para>The transmit time for a cycle (which must be less than 1 second)
+is the total character count multiplied by 10 and divided by the baud
+rate. A typical budget is GGA, RMC, GSA, 3*GSV = 82+75+67+(3*60) =
+404.</para>
+-->
+
+<para>When the C client library parses a response of this kind, it
+will assert the DEVICE_SET bit in the top-level set member.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"DEVICE", "speed":4800,"serialmode":"8N1","native":0}
+</programlisting>
+
+</listitem>
+</varlistentry>
+
+</variablelist>
+
+<para>When a client is in watcher mode, the daemon will ship it DEVICE
+notifications when a device is added to the pool or
+deactivated.</para>
+
+<para>When the C client library parses a response of this kind, it
+will assert the DEVICE_SET bit in the top-level set member.</para>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"DEVICE","path":"/dev/pts1","activated":0}
+</programlisting>
+
+<para>The daemon may ship an error object in response to a
+syntactically invalid command line or unknown command. It has
+the following elements:</para>
+
+<table frame="all" pgwide="0"><title>ERROR notification object</title>
+<tgroup cols="4" align="left" colsep="1" rowsep="1">
+<thead>
+<row>
+	<entry>Name</entry>
+	<entry>Always?</entry>
+	<entry>Type</entry>
+	<entry>Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+	<entry>class</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+        <entry>Fixed: "ERROR"</entry>
+</row>
+<row>
+	<entry>message</entry>
+	<entry>Yes</entry>
+	<entry>string</entry>
+	<entry>Textual error message</entry>
+</row>
+</tbody>
+</tgroup>
+</table>
+
+<para>Here's an example:</para>
+
+<programlisting>
+{"class":"ERROR","message":"Unrecognized request '?FOO'"}
+</programlisting>
+
+<para>When the C client library parses a response of this kind, it
+will assert the ERR_SET bit in the top-level set member.</para>
+
+</refsect1>
+<refsect1 id='ais-rtcm'><title>AIS AND RTCM DUMP FORMATS</title>
+
+<para>AIS support is an extension.  It may not be present if your
+instance of <application>gpsd</application> has been built with
+a restricted feature set.</para>
+
+<para>AIS packets are dumped as JSON objects with class "AIS".  Each
+AIS report object contains a "type" field giving the AIS message type
+and a "scaled" field telling whether the remainder of the fields are
+dumped in scaled or unscaled form. Other fields have names and types
+as specified in the <ulink
+url="http://gpsd.berlios.de/AIVDM.html">AIVDM/AIVDO Protocol
+Decoding</ulink> document; each message field table may be directly
+interpreted as a specification for the members of the corresponding
+JSON object type.</para>
+
+<para>RTCM2 corrections are dumped in the JSON format described in
+<citerefentry><refentrytitle>rtcm104</refentrytitle><manvolnum>5</manvolnum></citerefentry>.</para>
+
+</refsect1>
+<refsect1 id='devices'><title>GPS DEVICE MANAGEMENT</title>
+
+<para><application>gpsd</application> maintains an internal list of
+GPS devices (the "device pool").  If you specify devices on the
+command line, the list is initialized with those pathnames; otherwise
+the list starts empty.  Commands to add and remove GPS device paths
+from the daemon's device list must be written to a local Unix-domain
+socket which will be accessible only to programs running as root.
+This control socket will be located wherever the -F option specifies
+it.</para>
+
+<para>A device may will also be dropped from the pool if GPSD gets a zero
+length read from it. This  end-of-file condition indicates that the'
+device has been disconnected.</para>
+
+<para>When <application>gpsd</application> is properly installed along
+with hotplug notifier scripts feeding it device-add commands over the
+control socket, <application>gpsd</application> should require no
+configuration or user action to find devices.</para>
+
+<para>Sending SIGHUP to a running <application>gpsd</application>
+forces it to close all GPSes and all client connections.  It will then
+attempt to reconnect to any GPSes on its device list and resume
+listening for client connections.  This may be useful if your GPS
+enters a wedged or confused state but can be soft-reset by pulling
+down DTR.</para>
+
+<para>To point <application>gpsd</application> at a device that may be
+a GPS, write to the control socket a plus sign ('+') followed by the
+device name followed by LF or CR-LF.  Thus, to point the daemon at
+<filename>/dev/foo</filename>. send "+/dev/foo\n".  To tell the daemon
+that a device has been disconnected and is no longer available, send a
+minus sign ('-') followed by the device name followed by LF or
+CR-LF. Thus, to remove <filename>/dev/foo</filename> from the search
+list. send "-/dev/foo\n".</para>
+
+<para>To send a control string to a specified device, write to the
+control socket a '!', followed by the device name, followed by '=',
+followed by the control string.</para>
+
+<para>To send a binary control string to a specified device, write to the
+control socket a '&amp;', followed by the device name, followed by '=',
+followed by the control string in paired hex digits.</para>
+
+<para>Your client may await a response, which will be a line beginning
+with either "OK" or "ERROR".  An ERROR reponse to an add command means
+the device did not emit data recognizable as GPS packets; an ERROR
+response to a remove command means the specified device was not in
+<application>gpsd</application>'s device pool. An ERROR response to a
+! command means the daemon did not recognize the devicename
+specified.</para>
+
+<para>The control socket is intended for use by hotplug scripts and
+other device-discovery services.  This control channel is separate
+from the public <application>gpsd</application> service port, and only
+locally accessible, in order to prevent remote denial-of-service and
+spoofing attacks.</para>
+
+</refsect1>
+<refsect1 id='accuracy'><title>ACCURACY</title>
+
+<para>The base User Estimated Range Error (UERE) of GPSes is 8 meters
+or less at 66% confidence, 15 meters or less at 95% confidence. Actual
+horizontal error will be UERE times a dilution factor dependent on current
+satellite position.  Altitude determination is more sensitive to
+variability in ionospheric signal lag than latitude/longitude is, and is
+also subject to errors in the estimation of local mean sea level; base
+error is 12 meters at 66% confidence, 23 meters at 95% confidence.
+Again, this will be multiplied by a vertical dilution of precision
+(VDOP) dependent on satellite geometry, and VDOP is typically larger
+than HDOP.  Users should <emphasis>not</emphasis> rely on GPS altitude for
+life-critical tasks such as landing an airplane.</para>
+
+<para>These errors are intrinsic to the design and physics of the GPS
+system.  <application>gpsd</application> does its internal
+computations at sufficient accuracy that it will add no measurable
+position error of its own.</para>
+
+<para>DGPS correction will reduce UERE by a factor of 4, provided you
+are within about 100mi (160km) of a DGPS ground station from which you
+are receiving corrections.</para>
+
+<para>On a 4800bps connection, the time latency of fixes provided by
+<application>gpsd</application> will be one second or less 95% of the
+time.  Most of this lag is due to the fact that GPSes normally emit
+fixes once per second, thus expected latency is 0.5sec.  On the
+personal-computer hardware available in 2005, computation lag induced
+by <application>gpsd</application> will be negligible, on the order of
+a millisecond.  Nevertheless, latency can introduce significant errors
+for vehicles in motion; at 50km/h (31mi/h) of speed over ground, 1
+second of lag corresponds to 13.8 meters change in position between
+updates.</para>
+
+<para>The time reporting of the GPS system itself has an intrinsic
+accuracy limit of 0.000,000,340 =
+3.4&times;10<superscript>-7</superscript> seconds.  A more important
+limit is the GPS tick rate.  While the one-per-second PPS pulses
+emitted by serial GPS units are timed to the GPS system's intrinsic
+accuracy limit,the satellites only emit navigation messages at
+0.01-second intervals, and the timestamps in them only carry
+0.01-second precision. Thus, the timestamps that
+<application>gpsd</application> reports in time/position/velocity
+messages are normally accurate only to 1/100th of a second.</para>
+
+</refsect1>
+<refsect1 id='ntp'><title>USE WITH NTP</title>
+
+<para>gpsd can provide reference clock information to
+<application>ntpd</application>, to keep the system clock synchronized
+to the time provided by the GPS receiver.  This facility is
+only available when the daemon is started from root.  If you're going
+to use <application>gpsd</application> you probably want to run it
+<option>-n</option> mode so the clock will be updated even when no
+clients are active.</para>
+
+<para>Note that deriving time from messages received from the GPS is
+not as accurate as you might expect.  Messages are often delayed in
+the receiver and on the link by several hundred milliseconds, and this
+delay is not constant.  On Linux, <application>gpsd</application>
+includes support for interpreting the PPS pulses emitted at the start
+of every clock second on the carrier-detect lines of some serial
+GPSes; this pulse can be used to update NTP at much higher accuracy
+than message time provides.  You can determine whether your GPS emits
+this pulse by running at -D 5 and watching for carrier-detect state
+change messages in the logfile.</para>
+
+<para>When <application>gpsd</application> receives a sentence with a
+timestamp, it packages the received timestamp with current local time
+and sends it to a shared-memory segment with an ID known to
+<application>ntpd</application>, the network time synchronization
+daemon.  If <application>ntpd</application> has been properly
+configured to receive this message, it will be used to correct the
+system clock.</para>
+
+<para>Here is a sample <filename>ntp.conf</filename> configuration
+stanza telling <application>ntpd</application> how to read the GPS
+notfications:</para>
+
+<programlisting>
+server 127.127.28.0 minpoll 4 maxpoll 4
+fudge 127.127.28.0 time1 0.420 refid GPS
+
+server 127.127.28.1 minpoll 4 maxpoll 4 prefer
+fudge 127.127.28.1 refid GPS1
+</programlisting>
+
+<para>The magic pseudo-IP address 127.127.28.0 identifies unit 0 of
+the <application>ntpd</application> shared-memory driver; 127.127.28.1
+identifies unit 1.  Unit 0 is used for message-decoded time and unit 1
+for the (more accurate, when available) time derived from the PPS
+synchronization pulse.  Splitting these notifications allows
+<application>ntpd</application> to use its normal heuristics to weight
+them.</para>
+
+<para>With this configuration, <application>ntpd</application> will
+read the timestamp posted by <application>gpsd</application> every 16
+seconds and send it to unit 0.  The number after the parameter time1
+is an offset in seconds.  You can use it to adjust out some of the
+fixed delays in the system.  0.035 is a good starting value for the
+Garmin GPS-18/USB, 0.420 for the Garmin GPS-18/LVC.</para>
+
+<para>After restarting ntpd, a line similar to the one below should
+appear in the output of the command "ntpq -p" (after allowing a couple
+of minutes):</para>
+
+<screen>
+remote	   refid      st t when poll reach  delay    offset  jitter
+=========================================================================
++SHM(0)	  .GPS.      0 l   13   16  377    0.000    0.885   0.882
+</screen>
+
+<para>If you are running PPS then it will look like this:</para>
+
+<screen>
+remote	   refid      st t when poll reach  delay    offset  jitter
+=========================================================================
+-SHM(0)	  .GPS.      0 l   13   16  377    0.000    0.885   0.882
+*SHM(1)	  .GPS1.     0 l   11   16  377    0.000   -0.059   0.006
+</screen>
+
+<para>When the value under "reach" remains zero, check that gpsd is
+running; and some application is connected to it or the '-n' option was
+used.  Make sure the receiver is locked on to at least one satellite,
+and the receiver is in SiRF binary, Garmin binary or NMEA/PPS mode.  Plain
+NMEA will also drive ntpd, but the accuracy as bad as one second.  When
+the SHM(0) line does not appear at all, check the system logs for error
+messages from ntpd.</para>
+
+<para>When no other reference clocks appear in the NTP configuration,
+the system clock will lock onto the GPS clock.  When you have previously
+used <application>ntpd</application>, and other reference clocks appear
+in your configuration, there may be a fixed offset between the GPS clock
+and other clocks.  The <application>gpsd</application> developers would
+like to receive information about the offsets observed by users for each
+type of receiver.  Please send us the output of the "ntpq -p" command
+and the make and type of receiver.</para>
+
+</refsect1>
+<refsect1 id='dbus'><title>USE WITH D-BUS</title>
+
+<para>On operating systems that support D-BUS,
+<application>gpsd</application> can be built to broadcast GPS fixes to
+D-BUS-aware applications.  As D-BUS is still at a pre-1.0 stage, we
+will not attempt to document this interface here.  Read the
+<application>gpsd</application> source code to learn more.</para>
+
+</refsect1>
+<refsect1 id='security'><title>SECURITY AND PERMISSIONS ISSUES</title>
+
+<para><application>gpsd</application>, if given the -G flag, will
+listen for connections from any reachable host, and then disclose the
+current position.  Before using the -G flag, consider whether you
+consider your computer's location to be sensitive data to be kept
+private or something that you wish to publish.</para>
+
+<para><application>gpsd</application> must start up as root in order
+to open the NTPD shared-memory segment, open its logfile, and create
+its local control socket.  Before doing any processing of GPS data, it
+tries to drop root privileges by setting its UID to "nobody" (or another
+userid as set by configure) and its group ID to the group of the initial
+GPS passed on the command line &mdash; or, if that device doesn't exist,
+to the group of <filename>/dev/ttyS0</filename>.</para>
+
+<para>Privilege-dropping is a hedge against the possibility that
+carefully crafted data, either presented from a client socket or from
+a subverted serial device posing as a GPS, could be used to induce
+misbehavior in the internals of <application>gpsd</application>.
+It ensures that any such compromises cannot be used for privilege
+elevation to root.</para>
+
+<para>The assumption behind <application>gpsd</application>'s
+particular behavior is that all the tty devices to which a GPS might
+be connected are owned by the same non-root group and allow group
+read/write, though the group may vary because of distribution-specific
+or local administrative practice.  If this assumption is false,
+<application>gpsd</application> may not be able to open GPS devices in
+order to read them (such failures will be logged).</para>
+
+<para>In order to fend off inadvertent denial-of-service attacks by
+port scanners (not to mention deliberate ones),
+<application>gpsd</application> will time out inactive client
+connections.  Before the client has issued a command that requests a
+channel assignment, a short timeout (60 seconds) applies.  There is no
+timeout for clients in watcher or raw modes; rather,
+<application>gpsd</application> drops these clients if they fail to
+read data long enough for the outbound socket write buffer to fill.
+Clients with an assigned device in polling mode are subject to a
+longer timeout (15 minutes).</para>
+
+</refsect1>
+<refsect1 id='limitations'><title>LIMITATIONS</title>
+
+<para>If multiple NMEA talkers are feeding RMC, GLL, and GGA sentences
+to the same serial device (possible with an RS422 adapter hooked up to
+some marine-navigation systems), a 'TPV' response may mix an altitude
+from one device's GGA with latitude/longitude from another's RMC/GLL
+after the second sentence has arrived.</para>
+
+<para><application>gpsd</application> may change control settings on
+your GPS (such as the emission frequency of various sentences or
+packets) and not restore the original settings on exit.  This is a
+result of inadequacies in NMEA and the vendor binary GPS protocols,
+which often do not give clients any way to query the values of control
+settings in order to be able to restore them later.</para>
+
+<para>If your GPS uses a SiRF chipset at firmware level 231, reported
+UTC time may be off by the difference between 13 seconds and whatever
+leap-second correction is currently applicable, from startup until
+complete subframe information is received (normally about six
+seconds).  Firmware levels 232 and up don't have this problem.  You
+may run <application>gpsd</application> at debug level 4 to see the
+chipset type and firmware revision level.</para>
+
+<para>When using SiRF chips, the VDOP/TDOP/GDOP figures and associated
+error estimates are computed by <application>gpsd</application> rather
+than reported by the chip.  The computation does not exactly match
+what SiRF chips do internally, which includes some satellite weighting
+using parameters <application>gpsd</application> cannot see.</para>
+
+<para>Autobauding on the Trimble GPSes can take as long as 5 seconds
+if the device speed is not matched to the GPS speed.</para>
+
+<para>If you are using an NMEA-only GPS (that is, not using SiRF or
+Garmin or Zodiac binary mode) and the GPS does not emit GPZDA at the
+start of its update cycle (which most consumer-grade NMEA GPSes do
+not) and it is after 2099, then the century part of the dates
+<application>gpsd</application> delivers will be wrong.</para>
+
+<para>Generation of position error estimates (eph, epv, epd, eps, epc)
+from the incomplete data handed back by GPS reporting protocols
+involves both a lot of mathematical black art and fragile
+device-dependent assumptions.  This code has been bug-prone in tbe
+past and problems may still lurk there.</para>
+
+</refsect1>
+<refsect1 id='files'><title>FILES</title>
+
+<variablelist>
+<varlistentry>
+<term><filename>/dev/ttyS0</filename></term>
+<listitem>
+<para>Prototype TTY device. After startup,
+<application>gpsd</application> sets its group ID to the owner of this
+device if no GPS device was specified on the command line does not
+exist.</para>
+</listitem>
+</varlistentry>
+<!--
+<varlistentry>
+<term><filename>/usr/share/gpsd/dgpsip-servers</filename></term>
+<listitem>
+<para>A text file listing DGPSIP servers worldwide.  If no DGPSIP
+server is specified at startup (via the -d option)
+<application>gpsd</application> will look here to find the
+nearest one.  Each line has three space-separated fields:
+latitude (decimal degrees), longitude (decimal degrees) and
+a server name (optionally followed by a colon and a port number).
+Text following # on a line is ignored.  Blank lines are ignored.</para>
+</listitem>
+</varlistentry>
+-->
+</variablelist>
+
+</refsect1>
+<refsect1 id='standards'><title>APPLICABLE STANDARDS</title>
+
+<para>The official NMEA protocol standard is available on paper from
+the <ulink url='http://www.nmea.org/pub/0183/'>National Marine
+Electronics Association</ulink>, but is proprietary and expensive; the
+maintainers of <application>gpsd</application> have made a point of
+not looking at it.  The <ulink url="http://gpsd.berlios.de/">GPSD
+website</ulink> links to several documents that collect publicly
+disclosed information about the protocol.</para>
+
+<para><application>gpsd</application> parses the following NMEA
+sentences: RMC, GGA, GLL, GSA, GSV, VTG, ZDA.  It recognizes these
+with either the normal GP talker-ID prefix, or with the GN prefix used
+by GLONASS, or with the II prefix emitted by Seahawk Autohelm marine
+navigation systems, or with the IN prefix emitted by some Garmin
+units.  It recognizes some vendor extensions: the PGRME emitted by some
+Garmin GPS models, the OHPR emitted by Oceanserver digital compasses,
+the PTNTHTM emitted by True North digital compasses, and the PASHR 
+sentences emitted by some Ashtech GPSes.</para>
+
+<para>Note that <application>gpsd</application> JSON returns pure decimal
+degrees, not the hybrid degree/minute format described in the NMEA
+standard.</para>
+
+<para>Differential-GPS corrections are conveyed by the RTCM-104
+proocol. The applicable standard for RTCM-104 V2 is <citetitle>RTCM
+Recommended Standards for Differential NAVSTAR GPS Service</citetitle>
+RTCM Paper 194-93/SC 104-STD.  The applicable standard for RTCM-104 V3
+is <citetitle>RTCM Standard 10403.1 for Differential GNSS Services -
+Version 3</citetitle> RTCM Paper 177-2006-SC104-STD.</para>
+
+<para>AIS is defined by ITU Recommendation M.1371,
+<citetitle>Technical Characteristics for a Universal Shipborne
+Automatic Identification System Using Time Division Multiple
+Access</citetitle>. The AIVDM/AIVDO format understood by this progeam
+is defined by IEC-PAS 61162-100, <citetitle>Maritime navigation and
+radiocommunication equipment and systems</citetitle></para>
+
+</refsect1>
+<refsect1 id='see_also'><title>SEE ALSO</title>
+<para>
+<citerefentry><refentrytitle>gps</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>libgps</refentrytitle><manvolnum>3</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>libgpsd</refentrytitle><manvolnum>3</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>gpsprof</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>gpsfake</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>gpsctl</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>gpscat</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+<citerefentry><refentrytitle>rtcm-104</refentrytitle><manvolnum>5</manvolnum></citerefentry>.
+</para>
+</refsect1>
+
+<refsect1 id='maintainer'><title>AUTHORS</title>
+
+<para>Remco Treffcorn, Derrick Brashear, Russ Nelson, Eric S. Raymond,
+Chris Kuethe.  This manual page by Eric S. Raymond
+<email>esr@thyrsus.com</email>.  There is a <ulink
+url="http://gpsd.berlios.de/">project site</ulink>.</para>
+</refsect1>
+
+</refentry>

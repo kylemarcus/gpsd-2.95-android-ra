@@ -1,0 +1,286 @@
+'\" t
+.\"     Title: 3
+.\"    Author: [see the "AUTHOR" section]
+.\" Generator: DocBook XSL Stylesheets v1.75.2 <http://docbook.sf.net/>
+.\"      Date: 14 Aug 2004
+.\"    Manual: GPSD Documentation
+.\"    Source: The GPSD Project
+.\"  Language: English
+.\"
+.TH "3" "3" "14 Aug 2004" "The GPSD Project" "GPSD Documentation"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+libgps \- C service library for communicating with the GPS daemon
+.SH "SYNOPSIS"
+.sp
+.ft B
+.nf
+
+C:
+
+#include <gps\&.h>
+
+.fi
+.ft
+.HP \w'struct\ gps_data_t\ *gps_open('u
+.BI "struct gps_data_t *gps_open(int" "af" ", char\ *" "server" ", char\ *\ " "port" ");"
+.HP \w'int\ gps_open_r('u
+.BI "int gps_open_r(char\ *" "server" ", char\ *\ " "port" ", struct\ gps_data_t\ *" "gpsdata" ");"
+.HP \w'int\ gps_send('u
+.BI "int gps_send(struct\ gps_data_t\ *" "gpsdata" ", char\ *" "fmt" "\&.\&.\&.);"
+.HP \w'void\ gps_set_raw_hook('u
+.BI "void gps_set_raw_hook(struct\ gps_data_t\ *" "gpsdata" ", void\ (*" "hook" ")(struct\ gps_data_t\ *,\ char\ *buf,\ size_t\ len));"
+.HP \w'int\ gps_poll('u
+.BI "int gps_poll(struct\ gps_data_t\ *" "gpsdata" ");"
+.HP \w'bool\ gps_waiting('u
+.BI "bool gps_waiting(struct\ gps_data_t\ *" "gpsdata" ");"
+.HP \w'void\ gps_close('u
+.BI "void gps_close(struct\ gps_data_t\ *" "gpsdata" ");"
+.HP \w'int\ gps_stream('u
+.BI "int gps_stream(struct\ gps_data_t\ *" "gpsdata" ", unsigned\ int" "flags" ", void\ *" "data" ");"
+.HP \w'char\ *gps_errstr('u
+.BI "char *gps_errstr(int\ " "err" ");"
+.sp
+.ft B
+.nf
+
+Python:
+
+import gps
+
+session = gps\&.gps(host="localhost", port="2947")
+
+session\&.set_raw_hook(raw_hook)
+
+session\&.stream(flags=WATCH_JSON)
+
+for report in session:
+    process(report)
+
+del session
+
+.fi
+.ft
+.SH "DESCRIPTION"
+.PP
+\fBlibgps\fR
+is a service library which supports communicating with an instance of the
+\fBgpsd\fR(8); link it with the linker option \-lgps\&.
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBWarning\fR
+.ps -1
+.br
+.PP
+Take care to conditionalize your code on the major and minor API version symbols in
+gps\&.h; ideally, force a compilation failure if GPSD_API_MAJOR_VERSION is not a version you recognize\&. See the GPSD project website for more information on the protocol and API changes\&.
+.sp .5v
+.RE
+.PP
+Calling
+\fBgps_open()\fR
+initializes a GPS\-data structure to hold the data collected by the GPS, and returns a socket attached to
+\fBgpsd\fR(1)\&.
+\fBgps_open()\fR
+returns NULL on errors\&. errno is set depending on the error returned from the the socket layer; see
+gps\&.h
+for values and explanations\&. The host address may be a DNS name, an IPv4 dotted quad, or an IPV6 address; the library will do the right thing for any of these\&.
+.PP
+\fBgps_open_r()\fR
+is a reentrent\-friendly version that puts the session storage where you wish to allocate it\&. It returns 0 on success and \-1 on failure, with errno set appropriately\&.
+.PP
+\fBgps_close()\fR
+ends the session\&.
+.PP
+\fBgps_send()\fR
+writes a command to the daemon\&. The second argument must be a format string containing elements from the command set documented at
+\fBgpsd\fR(1)\&. It may have % elements as for
+\fBsprintf\fR(3), which will be filled in from any following arguments\&. This function returns a \-1 if there was a Unix\-level write error, otherwise 0\&. Please read the LIMITATIONS section for additional information and cautions\&.
+.PP
+\fBgps_poll()\fR
+accepts a response, or sequence of responses, from the daemon and interprets it as though it were a query response (the return value is as for a query)\&.
+\fBgps_poll()\fR
+returns the validity mask of the received structure\&. This function does a blocking read waiting for data from the daemon; it returns 0 for success, \-1 with errno set on a Unix\-level read error, \-1 with errno not set if the socket to the daemon has closed\&.
+.PP
+\fBgps_waiting()\fR
+can be used to check whether there is data from the daemon\&. It returns true if there is, false on no data waiting or error condition\&. It does not block waiting for input\&.
+.PP
+\fBgps_stream()\fR
+asks
+gpsd
+to stream the reports it has at you, to be made available whenn you poll\&. It is preferable to the older\-style (pre\-2\&.90) way of doing this,
+\fBgps_query()\fR
+with a "w+" argument, because it insulates your code from whether your client library and your
+gpsd
+are using old or new protocol\&. The second argument is a flag mask that sets various policy bits; see trhe list below\&. Calling
+\fBgps_stream()\fR
+more than once with different flag masks is allowed\&.
+.PP
+WATCH_DISABLE
+.RS 4
+Disable the reporting modes specified by the other WATCH_ flags\&. Cannot be used to disable POLL_NONBLOCK\&.
+.RE
+.PP
+WATCH_ENABLE
+.RS 4
+Disable the reporting modes specified by the other WATCH_ flags\&. This is the default\&.
+.RE
+.PP
+WATCH_JSON
+.RS 4
+Enable JSON reporting of data\&. If WATCH_ENABLE is set, and no other WATCH flags are set, this is the default\&.
+.RE
+.PP
+WATCH_NMEA
+.RS 4
+Enable generated pseudo\-NMEA reporting on binary devices\&.
+.RE
+.PP
+WATCH_RARE
+.RS 4
+Enable reporting of binary packets in encoded hex\&.
+.RE
+.PP
+WATCH_RAW
+.RS 4
+Enable literal passtrough of binary packets\&.
+.RE
+.PP
+WATCH_SCALED
+.RS 4
+When reporting AIS data, scale integer quantities to floats if they have a divisor or rendering formula assosiated with them\&.
+.RE
+.PP
+WATCH_NEWSTYLE
+.RS 4
+Force issuing a JSON initialization and getting new\-style responses\&. This will become the default in a future release\&.
+.RE
+.PP
+WATCH_OLDSTYLE
+.RS 4
+Force issuing a W or R command and getting old\-style responses\&. This is now the default behavior, but will be removed in a future release\&.
+.RE
+.PP
+WATCH_DEVICE
+.RS 4
+Restrict watching to a speciied device, patch given as second argument\&.
+.RE
+.PP
+POLL_NONBLOCK
+.RS 4
+Normally
+\fBgps_poll()\fR
+blocks until either there is a read error or some data is received from tha daemon\&. In this mode,
+\fBgps_poll()\fR
+returns immediately with a value of 0 if there is no input waiting\&.
+.RE
+.PP
+\fBgps_set_raw_hook()\fR
+takes a function you specify and run it (synchronously) on the raw data pulled by a
+\fBgps_query()\fR
+or
+\fBgps_poll()\fR
+call\&. The arguments passed to this hook will be a pointer to a structure containing parsed data, and a buffer containining the raw
+gpsd
+response\&.
+.PP
+\fBgps_errstr()\fR
+returns an ASCII string (in English) describing the error indicated by a nonzero return value from
+\fBgps_open()\fR\&.
+.PP
+Consult
+gps\&.h
+to learn more about the data members and associated timestamps\&. Note that information will accumulate in the session structure over time, and the \*(Aqvalid\*(Aq field is not automatically zeroed by each poll\&. It is up to the client to zero that field when appropriate and to keep an eye on the fix and sentence timestamps\&.
+.PP
+The Python implementation supports the same facilities as the C library\&.
+\fBgps_open()\fR
+is replaced by the initialization of a gps session object; the other calls are methods of that object, and have the same names as the corresponding C functions\&. Resources within the session object will be properly released when it is garbage\-collected\&. Note one limitation: POLL_NOBLOCK is not yet supported in Python; use the waiting() method instead\&.
+.SH "CODE EXAMPLE"
+.PP
+The following is an excerpted and simplified version of the libgps interface code from
+\fBxgps\fR(1)\&. The function
+\fBhandle_input()\fR
+is a trivial piece of code that calls gps_poll(gpsdata)\&.
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+    gpsdata = gps_open(server, port);
+
+    build_gui(toplevel);
+
+    gps_set_raw_hook(gpsdata, update_panel);
+	
+    (void)gps_stream(gpsdata, WATCH_ENABLE, NULL);
+
+    (void)XtAppAddInput(app, gpsdata\->gps_fd, 
+		  (XtPointer)XtInputReadMask, handle_input, NULL);
+    (void)XtAppMainLoop(app);
+
+    (void)gps_close(gpsdata);
+.fi
+.if n \{\
+.RE
+.\}
+.SH "LIMITATIONS"
+.PP
+In the C API, incautious use of
+\fBgps_send()\fR
+may lead to subtle bugs\&. In order to not bloat
+struct gps_data_t
+with space used by responses that are not expected to be shipped in close sequence with each other, the storage for fields associated with certain responses are combined in a union\&.
+.PP
+The risky set of responses includes VERSION, DEVICELIST, RTCM2, RTCM3, and AIS; it may not be limited to that set\&. The logic of the daemon\*(Aqs watcher mode is careful to avoid dangerous sequences, but you should read and understand the layout of
+struct gps_data_t
+before using
+\fBgps_send()\fR
+to request any of these responses\&.
+.SH "COMPATIBILITY"
+.PP
+The
+\fBgps_query()\fR
+supported in major versions 1 and 2 of this library has been removed\&. With the new streaming\-oriented wire protocol behind this library, it is extremely unwise to assume that the first transmission from the damon after a command is shipped to it will be the reponse to command\&.
+.PP
+If you must send commands to the daemon explicity, use
+\fBgps_send()\fR
+but beware that this ties your code to the GPSD wire protocol\&. It is not recommended\&.
+.PP
+This API has been stable since GPSD 2\&.90, except that
+\fBgps_waiting()\fR
+was added in 2\&.91\&.
+.SH "SEE ALSO"
+.PP
+
+\fBgpsd\fR(8),
+\fBgps\fR(1),
+\fBlibgpsd\fR(3)\&.
+\fBlibgpsmm\fR(3)\&.
+.SH "AUTHOR"
+.PP
+Eric S\&. Raymond <esr@thyrsus\&.com>, Thread\-callback methods in the C binding added by Alfredo Pironti <alfredo@users\&.sourceforge\&.net>\&.

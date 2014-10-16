@@ -1,0 +1,9 @@
+prefix=/home/kmarcus2/Downloads/bin/gpsd-2.95
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: GPSD
+Description: GPS Daemon communication library
+Version: 2.95
+Libs: -L${libdir} -lgps
