@@ -160,6 +160,7 @@ static void conditionally_log_fix(struct gps_fix_t *gpsfix)
 
 	old_int_time = int_time;
 	(void)gmtime_r(&(int_time), &time);
+	printf("*** found gps fix ***");
 	print_fix(gpsfix, &time);
     }
 }
@@ -315,22 +316,28 @@ static int socket_mainloop(void)
     gps_set_raw_hook(&gpsdata, process);
     (void)gps_stream(&gpsdata, WATCH_ENABLE, NULL);
 
+    time_t t;
+    time(&t);
+    printf("*** Sent first gps request at %s", ctime(&t));
+
     for (;;) {
-	int data;
-	struct timeval tv;
+		int data;
+		struct timeval tv;
 
-	FD_ZERO(&fds);
-	FD_SET(gpsdata.gps_fd, &fds);
+		FD_ZERO(&fds);
+		FD_SET(gpsdata.gps_fd, &fds);
 
-	tv.tv_usec = 250000;
-	tv.tv_sec = 0;
-	data = select(gpsdata.gps_fd + 1, &fds, NULL, NULL, &tv);
+		tv.tv_usec = 250000;
+		tv.tv_sec = 0;
+		data = select(gpsdata.gps_fd + 1, &fds, NULL, NULL, &tv);
 
-	if (data == -1) {
-	    (void)fprintf(stderr, "%s\n", strerror(errno));
-	    break;
-	} else if (data)
-	    (void)gps_read(&gpsdata);
+		if (data == -1) {
+		    (void)fprintf(stderr, "%s\n", strerror(errno));
+		    break;
+		} else if (data) {
+		    (void)gps_read(&gpsdata);
+		    conditionally_log_fix(&gpsfix->fix);
+		}
     }
     (void)gps_close(&gpsdata);
     return 0;
