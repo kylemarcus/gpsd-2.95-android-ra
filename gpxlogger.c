@@ -32,6 +32,8 @@ extern struct tm *gmtime_r(const time_t *, /*@out@*/ struct tm *tp);
  *
  **************************************************************************/
 
+static FILE * ra_log;
+
 static char *author = "Amaury Jacquot, Chris Kuethe";
 static char *license = "BSD";
 static char *progname;
@@ -136,7 +138,7 @@ static void conditionally_log_fix(struct gps_fix_t *gpsfix)
 {
     int_time = (time_t) floor(gpsfix->time);
     if ((int_time != old_int_time) && gpsfix->mode >= MODE_2D) {
-	struct tm time;
+	struct tm time_tm;
 	/* 
 	 * Make new track if the jump in time is above
 	 * timeout.  Handle jumps both forward and
@@ -159,9 +161,17 @@ static void conditionally_log_fix(struct gps_fix_t *gpsfix)
 	}
 
 	old_int_time = int_time;
-	(void)gmtime_r(&(int_time), &time);
-	printf("*** found gps fix ***");
-	print_fix(gpsfix, &time);
+	(void)gmtime_r(&(int_time), &time_tm);
+
+	/* Resource Accounting - log gps fix */
+	struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    printf(" *** found GPS fix ***\n");
+    fflush(stdout);
+    fprintf(ra_log, "GPS Fix at %lld.%.9ld\n", (long long) now.tv_sec, now.tv_nsec);
+    fflush(ra_log);
+
+	print_fix(gpsfix, &time_tm);
     }
 }
 
@@ -316,9 +326,33 @@ static int socket_mainloop(void)
     gps_set_raw_hook(&gpsdata, process);
     (void)gps_stream(&gpsdata, WATCH_ENABLE, NULL);
 
-    time_t t;
-    time(&t);
-    printf("*** Sent first gps request at %s", ctime(&t));
+    /* Resource Accounting - create file log */
+    mkdir("log", 0777);
+
+    char fileName[64];
+    time_t rawtime;
+    struct tm * timeinfo;
+
+    sprintf(fileName, "log/gpxlogger_ra_%d_", getpid());
+    int l = strlen(fileName);
+
+    time(&rawtime);
+    timeinfo = localtime (&rawtime);
+    strftime(&fileName[l],64,"%b_%d_%H_%M_%S",timeinfo);
+	l = strlen(fileName);
+    sprintf(&fileName[l], ".log");
+    
+    printf("** log filename: %s\n", fileName);
+    fflush(stdout);
+
+    ra_log = fopen(fileName, "w");
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    printf(" *** first GPS request ***\n");
+    fflush(stdout);
+    fprintf(ra_log, "GPS Request at %lld.%.9ld\n", (long long) now.tv_sec, now.tv_nsec);
+    fflush(ra_log);
 
     for (;;) {
 		int data;
@@ -336,6 +370,7 @@ static int socket_mainloop(void)
 		    break;
 		} else if (data) {
 		    (void)gps_read(&gpsdata);
+		    /* Resource Accounting - log a gps fix */
 		    conditionally_log_fix(&(gpsdata.fix));
 		}
     }
