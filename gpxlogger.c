@@ -336,7 +336,7 @@ static int socket_mainloop(void)
 		    break;
 		} else if (data) {
 		    (void)gps_read(&gpsdata);
-		    conditionally_log_fix(&gpsfix->fix);
+		    conditionally_log_fix(&(gpsdata.fix));
 		}
     }
     (void)gps_close(&gpsdata);
